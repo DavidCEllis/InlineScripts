@@ -1,5 +1,5 @@
 # /// script
-# requires-python = "~=3.12.5"
+# requires-python = "~=3.12.0"
 # dependencies = [
 #     "mutagen>=1.47",
 #     "rich>=13.9",
