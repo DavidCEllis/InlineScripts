@@ -225,7 +225,6 @@ def main():
 
     test_args, pytest_args = parser.parse_known_args()
 
-    print("Getting matching python versions")
     pythons = get_viable_pythons(
         all_versions=test_args.all_versions,
         prereleases=test_args.prereleases,
@@ -236,7 +235,6 @@ def main():
     test_path.mkdir(exist_ok=True)
 
     try:
-        print("Running tests")
         with ThreadPoolExecutor() as pool:
             futures = [
                 pool.submit(
