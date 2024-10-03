@@ -25,7 +25,6 @@ import tempfile
 import tomllib
 
 from concurrent.futures import ThreadPoolExecutor
-from multiprocessing.pool import ThreadPool
 
 from pathlib import Path
 
