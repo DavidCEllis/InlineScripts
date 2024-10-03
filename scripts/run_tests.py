@@ -73,7 +73,10 @@ def get_available_pythons(all_versions: bool = False) -> list[str]:
     return matches
 
 
-def get_viable_pythons(all_versions: bool = False) -> list[str]:
+def get_viable_pythons(
+    all_versions: bool = False,
+    prereleases: bool = False
+) -> list[str]:
     # Try to get a requires-python value
     base_path = Path.cwd()
     toml_file = base_path / "pyproject.toml"
@@ -97,7 +100,7 @@ def get_viable_pythons(all_versions: bool = False) -> list[str]:
         {
             p
             for p in get_available_pythons(all_versions=all_versions)
-            if p in spec
+            if spec.contains(p, prereleases=prereleases)
         },
         key=lambda v: Version(v),
     )
@@ -178,11 +181,17 @@ def main():
         help="Test against *EVERY* patch version of Python available "
              "from UV that matches the spec (NOT RECOMMENDED)",
     )
+    parser.add_argument(
+        "++prereleases",
+        action="store_true",
+        help="Test against available pre-release Python versions"
+    )
 
     test_args, pytest_args = parser.parse_known_args()
 
     pythons = get_viable_pythons(
-        all_versions=test_args.all_versions
+        all_versions=test_args.all_versions,
+        prereleases=test_args.prereleases,
     )
 
     for python in pythons:
