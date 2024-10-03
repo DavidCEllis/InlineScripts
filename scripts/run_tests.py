@@ -11,7 +11,7 @@ python versions and run the tests in the working directory against them.
 
 Uses UV to create the directories
 """
-
+import os
 import sys
 
 import argparse
@@ -53,9 +53,23 @@ def get_available_pythons(all_versions: bool = False) -> list[str]:
     version_re = re.compile(
         r"(?m)^cpython-(?P<version>\d+.\d+.\d+(?:a|b|rc)?\d*).*$"
     )
+
     cmd = [UV_PATH, "python", "list"]
     if all_versions:
         cmd.append("--all-versions")
+
+    # If pyenv is on `PATH` uv python list is ultra slow
+    # So we hide pyenv to make this faster
+    env = os.environ.copy()
+    pyenv_root = env.get("PYENV_ROOT")
+    if pyenv_root:
+        path = env["PATH"]
+        sep = ";" if sys.platform == "win32" else ":"
+        new_path = sep.join(
+            p for p in path.split(sep)
+            if not p.startswith(pyenv_root)
+        )
+        env["PATH"] = new_path
 
     data = subprocess.run(
         [
@@ -66,6 +80,7 @@ def get_available_pythons(all_versions: bool = False) -> list[str]:
         capture_output=True,
         text=True,
         check=True,
+        env=env,
     )
 
     matches = version_re.findall(data.stdout)
