@@ -12,7 +12,7 @@ The `build_zipapps.py` script requires `uv` be installed on `PATH` and will gene
 bundled zipapps with [ducktools-env](https://github.com/DavidCEllis/ducktools-env) that
 can be used from any Python install of 3.10 or later.
 
-It puts the scripts in `~/bin` on Linux/MacOs and `%USERPROFILE%\bin` on Windows.
+It puts the scripts in `~/bin` on Linux/MacOS and `%USERPROFILE%\bin` on Windows.
 
 ## Included Scripts ##
 
