@@ -96,14 +96,30 @@ def get_viable_pythons(
 
     spec = SpecifierSet(requires_python)
 
-    return sorted(
-        {
-            p
-            for p in get_available_pythons(all_versions=all_versions)
-            if spec.contains(p, prereleases=prereleases)
-        },
-        key=lambda v: Version(v),
-    )
+    if all_versions:
+        version_list = sorted(
+            {
+                p for p in get_available_pythons(all_versions=all_versions)
+                if spec.contains(p, prereleases=prereleases)
+            },
+            key=lambda v: Version(v),
+        )
+    else:
+        # Avoid including multiple micro releases, only use latest
+        py_versions = {}
+        for p in get_available_pythons(all_versions=all_versions):
+            if spec.contains(p, prereleases=prereleases):
+                ver = Version(p)
+                big_ver = f"{ver.major}.{ver.minor}"
+                if current_ver := py_versions.get(big_ver):
+                    if ver > current_ver:
+                        py_versions[big_ver] = ver
+                else:
+                    py_versions[big_ver] = ver
+
+        version_list = sorted(str(v) for v in py_versions.values())
+
+    return version_list
 
 
 def run_tests_in_version(
