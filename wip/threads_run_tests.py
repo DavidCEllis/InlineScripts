@@ -14,7 +14,7 @@ python versions and run the tests in the working directory against them.
 
 Uses UV to create the directories
 """
-import concurrent.futures
+import os
 import sys
 
 import argparse
@@ -24,6 +24,7 @@ import subprocess
 import tempfile
 import tomllib
 
+import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
 
 from pathlib import Path
@@ -170,8 +171,12 @@ def run_tests_in_version(
         python_path = Path(tempdir) / PYTHON_EXE
         assert python_path.exists()
 
+        cmd = [str(python_path), "-m", "pytest", "--color=yes", *pytest_args]
+        if "pytest-cov" in dependency_set:
+            cmd.append("--no-cov")
+
         out = subprocess.run(
-            [str(python_path), "-m", "pytest", "--color=yes", *pytest_args],
+            cmd,
             capture_output=True,
         )
 
@@ -240,7 +245,6 @@ def main():
             test_path.rmdir()
         except OSError:
             pass
-
 
 
 if __name__ == "__main__":
