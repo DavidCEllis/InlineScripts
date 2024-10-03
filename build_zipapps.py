@@ -11,19 +11,20 @@ def make_zipapps(zipapp_dir: Path):
 
     script_dir = base_dir / "scripts"
 
-    ducktools_env = base_dir / "ducktools.pyz"
-
     for p in script_dir.glob("*.py"):
         out_p = zipapp_dir / p.with_suffix(".pyz").name
 
-        subprocess.run(
-            [
-                sys.executable,
-                str(ducktools_env),
-                "bundle", str(p),
-                "-o", str(out_p),
-            ]
-        )
+        try:
+            subprocess.run(
+                [
+                    "uvx",
+                    "ducktools-env",
+                    "bundle", str(p),
+                    "-o", str(out_p),
+                ]
+            )
+        except FileNotFoundError:
+            raise RuntimeError("UV Must be installed to build zipapps")
 
 
 def main():
