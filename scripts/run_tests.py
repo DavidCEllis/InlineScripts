@@ -117,7 +117,10 @@ def get_viable_pythons(
                 else:
                     py_versions[big_ver] = ver
 
-        version_list = sorted(str(v) for v in py_versions.values())
+        version_list = sorted(
+            (str(v) for v in py_versions.values()),
+            key=lambda v: v
+        )
 
     return version_list
 
