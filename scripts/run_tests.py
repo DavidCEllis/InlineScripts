@@ -123,14 +123,13 @@ def get_viable_pythons(
 
 
 def run_tests_in_version(
+    *,
     py_ver: str,
     extras: list[str],
     pytest_args: list[str],
-    quiet_uv: bool = False,
+    quiet_uv: bool,
+    test_path: Path,
 ):
-    cwd = Path.cwd()
-    test_path = cwd / "env_testing"
-    test_path.mkdir(exist_ok=True)
 
     with tempfile.TemporaryDirectory(
         dir=test_path,
@@ -168,14 +167,8 @@ def run_tests_in_version(
         assert python_path.exists()
 
         subprocess.run(
-            [str(python_path), "-m", "pytest", *pytest_args]
+            [str(python_path), "-m", "pytest", *pytest_args],
         )
-
-    # delete the env_testing directory if it is empty
-    try:
-        test_path.rmdir()
-    except OSError:
-        pass
 
 
 def main():
@@ -210,13 +203,24 @@ def main():
         prereleases=test_args.prereleases,
     )
 
-    for python in pythons:
-        run_tests_in_version(
-            py_ver=python,
-            extras=test_args.extras,
-            pytest_args=pytest_args,
-            quiet_uv=test_args.quiet,
-        )
+    cwd = Path.cwd()
+    test_path = cwd / "env_testing"
+    test_path.mkdir(exist_ok=True)
+
+    try:
+        for python in pythons:
+            run_tests_in_version(
+                py_ver=python,
+                extras=test_args.extras,
+                pytest_args=pytest_args,
+                quiet_uv=test_args.quiet,
+                test_path=test_path,
+            )
+    finally:
+        try:
+            test_path.rmdir()
+        except OSError:
+            pass
 
 
 if __name__ == "__main__":
