@@ -63,6 +63,12 @@ def run_tests_in_version(py_ver: str, package: str, pytest_args: list[str], quie
             [str(python_path), "-m", "pytest", *pytest_args]
         )
 
+    # delete the env_testing directory if it is empty
+    try:
+        test_path.rmdir()
+    except OSError:
+        pass
+
 
 def main():
     parser = argparse.ArgumentParser(prefix_chars="+")
