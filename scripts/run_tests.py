@@ -223,7 +223,8 @@ def main():
         action="store_true",
         help=(
             "Run tests for each Python version in parallel "
-            "(this does not run individual tests in parallel!)"
+            "(This does not run individual tests in parallel! "
+            "Still has many of the same issues though.)"
         )
     )
 
