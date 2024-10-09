@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "uv>=0.4.18",
+#     "uv>=0.4.20",
 #     "packaging>=24.1",
 # ]
 # ///
