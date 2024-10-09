@@ -138,12 +138,13 @@ def get_viable_pythons(
 
 
 def run_tests_in_version(
-    *,
     py_ver: str,
     extras: list[str],
     pytest_args: list[str],
     quiet_uv: bool,
     test_path: Path,
+    no_coverage: bool = False,
+    capture_output: bool = False,
 ):
 
     with tempfile.TemporaryDirectory(
@@ -181,9 +182,16 @@ def run_tests_in_version(
         python_path = Path(tempdir) / PYTHON_EXE
         assert python_path.exists()
 
-        subprocess.run(
-            [str(python_path), "-m", "pytest", *pytest_args],
+        cmd = [str(python_path), "-m", "pytest", "--color=yes", *pytest_args]
+        if no_coverage and "pytest-cov" in dependency_set:
+            cmd.append("--no-cov")
+
+        out = subprocess.run(
+            cmd,
+            capture_output=capture_output,
         )
+
+    return out
 
 
 def main():
@@ -197,7 +205,7 @@ def main():
     parser.add_argument(
         "+q", "++quiet",
         action="store_true",
-        help="Don't display UV output"
+        help="Don't display UV output, always on if running parallel tests"
     )
     parser.add_argument(
         "++all_versions",
@@ -209,6 +217,14 @@ def main():
         "++prereleases",
         action="store_true",
         help="Test against available pre-release Python versions"
+    )
+    parser.add_argument(
+        "++parallel",
+        action="store_true",
+        help=(
+            "Run tests for each Python version in parallel "
+            "(this does not run individual tests in parallel!)"
+        )
     )
 
     test_args, pytest_args = parser.parse_known_args()
@@ -222,20 +238,52 @@ def main():
     test_path = cwd / "env_testing"
     test_path.mkdir(exist_ok=True)
 
-    try:
-        for python in pythons:
-            run_tests_in_version(
-                py_ver=python,
-                extras=test_args.extras,
-                pytest_args=pytest_args,
-                quiet_uv=test_args.quiet,
-                test_path=test_path,
-            )
-    finally:
+    if test_args.parallel:
+        # Threads are appropriate as subprocess does not hold the GIL
+        from concurrent.futures import ThreadPoolExecutor, as_completed
         try:
-            test_path.rmdir()
-        except OSError:
-            pass
+            with ThreadPoolExecutor() as pool:
+                futures = [
+                    pool.submit(
+                        run_tests_in_version,
+                        py_ver=python,
+                        extras=test_args.extras,
+                        pytest_args=pytest_args,
+                        quiet_uv=True,
+                        test_path=test_path,
+                        no_coverage=True,
+                        capture_output=True,
+                    )
+                    for python in pythons
+                ]
+
+                for r in as_completed(futures):
+                    result = r.result()
+                    if result.stderr:
+                        sys.stderr.buffer.write(result.stderr)
+                    if result.stdout:
+                        sys.stdout.buffer.write(result.stdout)
+        finally:
+            try:
+                test_path.rmdir()
+            except OSError:
+                pass
+
+    else:
+        try:
+            for python in pythons:
+                run_tests_in_version(
+                    py_ver=python,
+                    extras=test_args.extras,
+                    pytest_args=pytest_args,
+                    quiet_uv=test_args.quiet,
+                    test_path=test_path,
+                )
+        finally:
+            try:
+                test_path.rmdir()
+            except OSError:
+                pass
 
 
 if __name__ == "__main__":
