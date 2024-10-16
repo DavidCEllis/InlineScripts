@@ -33,36 +33,6 @@ def call_uv(*args, quiet_uv=False):
     subprocess.run([*uv_cmd, *args], check=True)
 
 
-def build_parser():
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument(
-        "--mode",
-        choices=["oldest", "newest"],
-        default="oldest",
-        help=(
-            "Create venvs with the oldest or newest Python version "
-            "supported by the project. "
-            "Defaults to oldest."
-        )
-    )
-
-    parser.add_argument(
-        "--subfolders",
-        action="store_true",
-        help="Search through subfolders and update envs for projects discovered"
-    )
-
-    parser.add_argument(
-        "-e", "--extra",
-        action="append",
-        default=[],
-        help="Add extras if present in the base environment."
-    )
-
-    return parser
-
-
 def get_available_pythons(all_versions: bool = False) -> list[str]:
     """
     Get all python install version numbers available from UV
@@ -205,12 +175,46 @@ def build_envs(
                 continue
 
 
+def build_parser():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--mode",
+        choices=["oldest", "newest"],
+        default="oldest",
+        help=(
+            "Create venvs with the oldest or newest Python version "
+            "supported by the project. "
+            "Defaults to oldest."
+        )
+    )
+
+    parser.add_argument(
+        "--subfolders",
+        action="store_true",
+        help="Search through subfolders and update envs for projects discovered"
+    )
+
+    parser.add_argument(
+        "-e", "--extra",
+        action="append",
+        default=[],
+        help="Add extras if present in the base environment."
+    )
+
+    return parser
+
+
 def main():
     parser = build_parser()
     args = parser.parse_args()
 
     build_envs(
         mode=args.mode,
-        extras=args.extras,
+        extras=args.extra,
         subfolders=args.subfolders
     )
+
+
+if __name__ == "__main__":
+    main()
