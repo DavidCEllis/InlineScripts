@@ -37,7 +37,7 @@ else:
 UV_PATH = uv.find_uv_bin()
 
 
-def uv(*args, quiet_uv=False):
+def call_uv(*args, quiet_uv=False):
     uv_cmd = [UV_PATH, "--quiet"] if quiet_uv else [UV_PATH]
     subprocess.run([*uv_cmd, *args], check=True)
 
@@ -152,12 +152,12 @@ def run_tests_in_version(
         prefix=f"{py_ver.replace('.', '_')}_",
     ) as tempdir:
         # Create venv and install package
-        uv("venv", "--python", py_ver, tempdir, quiet_uv=quiet_uv)
+        call_uv("venv", "--python", py_ver, tempdir, quiet_uv=quiet_uv)
 
         extra_str = f"[{','.join(extras)}]" if extras else ""
 
         # Install package as editable so coverage works
-        uv(
+        call_uv(
             "pip", "install",
             "--python", tempdir,
             "-e", f".{extra_str}",
@@ -177,7 +177,7 @@ def run_tests_in_version(
         )
         dependency_set = {p["name"] for p in json.loads(pip_list.stdout)}
         if "pytest" not in dependency_set:
-            uv("pip", "install", "--python", tempdir, "pytest", quiet_uv=quiet_uv)
+            call_uv("pip", "install", "--python", tempdir, "pytest", quiet_uv=quiet_uv)
 
         python_path = Path(tempdir) / PYTHON_EXE
         assert python_path.exists()
