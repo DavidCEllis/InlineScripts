@@ -13,6 +13,7 @@ import sys
 import argparse
 import os
 import re
+import shutil
 import subprocess
 import tomllib
 
@@ -119,8 +120,20 @@ def get_matching_python(spec: SpecifierSet, versions: list[str], mode: str) -> s
             raise RuntimeError(f"Mode can only be 'oldest' or 'newest', given {mode!r}")
 
 
-def build_env(project_path, pythons: list[str], mode: str, extras: list[str]) -> None:
+def build_env(
+    project_path: Path,
+    pythons: list[str],
+    mode: str,
+    extras: list[str],
+    clear_existing: bool = True
+) -> None:
     toml_file = project_path / "pyproject.toml"
+    venv_folder = project_path / VENV_BASE
+
+    if clear_existing:
+        shutil.rmtree(venv_folder, ignore_errors=True)
+    elif venv_folder.exists():
+        raise FileExistsError(f".venv folder \"{venv_folder}\" already exists")
 
     if not toml_file.exists():
         raise FileNotFoundError(f"No pyproject.toml file found at \"{project_path}\"")
@@ -135,22 +148,69 @@ def build_env(project_path, pythons: list[str], mode: str, extras: list[str]) ->
             f"file with a 'project.requires-python' key"
         )
 
-    spec = SpecifierSet(requires_python)
+    # Check for extras
+    usable_extras = []
+    try:
+        extra_keys = pyproject["project"]["optional-dependencies"].keys()
+    except KeyError:
+        pass
+    else:
+        # Usable extras are those given and defined - use intersection
+        usable_extras.extend(set(extras) & extra_keys)
 
+    if usable_extras:
+        extras_str = "[" + ", ".join(usable_extras) + "]"
+    else:
+        extras_str = ""
+
+    spec = SpecifierSet(requires_python)
     base_python = get_matching_python(spec, pythons, mode)
 
+    venv_cmd = ["uv", "venv", str(venv_folder), "--python", base_python]
 
-def build_envs(mode: str, extras: list[str], subfolders: bool = False) -> None:
+    subprocess.run(venv_cmd, check=True)
+
+    pip_command = [
+        "uv", "pip", "install",
+        "-e", f".{extras_str}",
+        "--python", str(venv_folder),
+    ]
+
+    subprocess.run(pip_command, check=True)
+
+    print(f"Built environment in \"{venv_folder}\"")
+
+
+def build_envs(
+    mode: str,
+    extras: list[str],
+    subfolders: bool = False
+) -> None:
     pythons = get_available_pythons(all_versions=False)
 
     if not subfolders:
         project_path = Path.cwd()
-
-
+        build_env(project_path, pythons, mode, extras)
+    else:
+        base_project_paths = Path.cwd().glob("*/")
+        for p in base_project_paths:
+            toml_path = p / "pyproject.toml"
+            # Skip folders without pyproject.toml files
+            if not toml_path.exists():
+                continue
+            try:
+                build_env(p, pythons, mode, extras)
+            except (FileExistsError, RuntimeError) as e:
+                print(e)
+                continue
 
 
 def main():
     parser = build_parser()
     args = parser.parse_args()
 
-    build_envs(args.mode, args.subfolders)
+    build_envs(
+        mode=args.mode,
+        extras=args.extras,
+        subfolders=args.subfolders
+    )
