@@ -10,11 +10,15 @@ A simple test running script that will create temporary virtual environments for
 python versions and run the tests in the working directory against them.
 
 Uses UV to create the directories
+
+If an error occurs in testing the result code returned will be the largest error code
+thrown by any pytest run.
 """
 import os
 import sys
 
 import argparse
+import enum
 import json
 import re
 import subprocess
@@ -35,6 +39,16 @@ else:
 
 
 UV_PATH = uv.find_uv_bin()
+
+
+class PyTestExit(enum.IntEnum):
+    SUCCESS = 0
+    TEST_FAILURES = 1
+    TESTS_CANCELLED = 2
+    INTERNAL_ERROR = 3
+    CMD_ERROR = 4
+    NO_TESTS = 5
+    NO_ENVS = 404  # Custom error for no environments
 
 
 def call_uv(*args, quiet_uv=False):
@@ -194,7 +208,7 @@ def run_tests_in_version(
     return out
 
 
-def main():
+def main() -> PyTestExit:
     parser = argparse.ArgumentParser(prefix_chars="+")
     parser.add_argument(
         "+e", "++extras",
@@ -239,6 +253,8 @@ def main():
     test_path = cwd / "env_testing"
     test_path.mkdir(exist_ok=True)
 
+    result_codes: list[PyTestExit] = []
+
     if test_args.parallel:
         # Threads are appropriate as subprocess does not hold the GIL
         from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -260,6 +276,7 @@ def main():
 
                 for r in as_completed(futures):
                     result = r.result()
+                    result_codes.append(PyTestExit(result.returncode))
                     if result.stderr:
                         sys.stderr.buffer.write(result.stderr)
                     if result.stdout:
@@ -273,19 +290,26 @@ def main():
     else:
         try:
             for python in pythons:
-                run_tests_in_version(
+                result = run_tests_in_version(
                     py_ver=python,
                     extras=test_args.extras,
                     pytest_args=pytest_args,
                     quiet_uv=test_args.quiet,
                     test_path=test_path,
                 )
+                result_codes.append(PyTestExit(result.returncode))
         finally:
             try:
                 test_path.rmdir()
             except OSError:
                 pass
 
+    if not result_codes:
+        return PyTestExit.NO_ENVS
+    else:
+        return max(PyTestExit.SUCCESS, *result_codes)
+
 
 if __name__ == "__main__":
-    main()
+    exit_code = main().value
+    sys.exit(exit_code)
