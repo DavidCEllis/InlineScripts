@@ -63,7 +63,7 @@ def get_available_pythons(all_versions: bool = False) -> list[str]:
     :param all_versions: Include every patch release and not just the latest
     :return: list of version strings
     """
-    # CPython installs listed by UV - only want downloadable installs
+    # CPython installs listed by UV
     version_re = re.compile(
         r"(?m)^cpython-(?P<version>\d+.\d+.\d+(?:a|b|rc)?\d*).*$"
     )
