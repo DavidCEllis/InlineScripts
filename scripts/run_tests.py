@@ -3,6 +3,8 @@
 # dependencies = [
 #     "uv>=0.4.20",
 #     "packaging>=24.1",
+#     "ducktools-pythonfinder>=0.6.0",
+#     "ducktools-classbuilder>=0.7.2",
 # ]
 # ///
 """
@@ -21,14 +23,16 @@ import argparse
 import contextlib
 import enum
 import json
+import operator
 import re
 import subprocess
 import tempfile
 import tomllib
-import typing
 
 from pathlib import Path
 
+from ducktools.classbuilder.prefab import Prefab
+from ducktools.pythonfinder import get_python_installs, PythonInstall
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 import uv
@@ -53,7 +57,7 @@ class PyTestExit(enum.IntEnum):
     NO_ENVS = 404  # Custom error for no environments
 
 
-class PythonVEnv(typing.NamedTuple):
+class PythonVEnv(Prefab):
     exe: Path
     dependencies: set[str]
 
@@ -63,21 +67,20 @@ def call_uv(*args, quiet_uv=False):
     subprocess.run([*uv_cmd, *args], check=True)
 
 
-def get_available_pythons(all_versions: bool = False) -> list[str]:
-    """
-    Get all python install version numbers available from UV
+def implementation_version_tuple(install) -> tuple[str, int, int]:
+    return install.implementation, install.version[0], install.version[1]
 
-    :param all_versions: Include every patch release and not just the latest
-    :return: list of version strings
+
+def get_uv_python_installables() -> list[Version]:
     """
-    # CPython installs listed by UV
+    Get all downloadable UV Pythons that satisfy a spec
+
+    :return: list of valid Versions
+    """
+    # CPython downloadable installs only
     version_re = re.compile(
-        r"(?m)^cpython-(?P<version>\d+.\d+.\d+(?:a|b|rc)?\d*).*$"
+        r"(?m)^cpython-(?P<version>\d+.\d+.\d+(?:a|b|rc)?\d*).*<download available>$"
     )
-
-    cmd = [UV_PATH, "python", "list"]
-    if all_versions:
-        cmd.append("--all-versions")
 
     # If pyenv is on `PATH` uv python list is ultra slow
     # So we hide pyenv to make this faster
@@ -106,19 +109,15 @@ def get_available_pythons(all_versions: bool = False) -> list[str]:
 
     matches = version_re.findall(data.stdout)
 
-    return matches
+    return [Version(m) for m in matches]
 
 
-def get_viable_pythons(
-    all_versions: bool = False,
-    prereleases: bool = False
-) -> list[str]:
+def get_project_specifier(project_path: Path) -> SpecifierSet:
     # Try to get a requires-python value
-    base_path = Path.cwd()
-    toml_file = base_path / "pyproject.toml"
+    toml_file = project_path / "pyproject.toml"
 
     if not toml_file.exists():
-        raise RuntimeError(f"No pyproject.toml file found at \"{base_path}\"")
+        raise RuntimeError(f"No pyproject.toml file found at \"{project_path}\"")
 
     pyproject = tomllib.loads(toml_file.read_text())
 
@@ -126,41 +125,47 @@ def get_viable_pythons(
         requires_python = pyproject["project"]["requires-python"]
     except KeyError:
         raise RuntimeError(
-            f"Module folder \"{base_path}\" must have a pyproject.toml "
+            f"Module folder \"{project_path}\" must have a pyproject.toml "
             f"file with a 'project.requires-python' key"
         )
 
-    spec = SpecifierSet(requires_python)
+    return SpecifierSet(requires_python)
 
-    if all_versions:
-        version_list = sorted(
-            {
-                p for p in get_available_pythons(all_versions=all_versions)
-                if spec.contains(p, prereleases=prereleases)
-            },
-            key=lambda v: Version(v),
-        )
-    else:
-        # Avoid including multiple micro releases, only use latest
-        py_versions = {}
-        for p in get_available_pythons(all_versions=all_versions):
-            if spec.contains(p, prereleases=prereleases):
-                ver = Version(p)
-                big_ver = f"{ver.major}.{ver.minor}"
-                if current_ver := py_versions.get(big_ver):
-                    if ver > current_ver:
-                        py_versions[big_ver] = ver
-                else:
-                    py_versions[big_ver] = ver
 
-        version_list = [str(v) for v in sorted(py_versions.values())]
+def get_viable_pythons(
+    spec: SpecifierSet,
+    prereleases: bool = False,
+    pypy: bool = False,
+) -> list[PythonInstall]:
 
-    return version_list
+    # Get python installs from the system
+    implementations = {"cpython", "pypy"} if pypy else {"cpython"}
+
+    # The full filter for valid python versions
+    def version_filter(install):
+        valid_release = (prereleases or install.version[3] == "final")
+        valid_implementation = install.implementation in implementations
+        satisfies_spec = spec.contains(install.version_str, prereleases=prereleases)
+
+        return valid_release and valid_implementation and satisfies_spec
+
+    pythons: dict[tuple[str, int, int], PythonInstall] = {}
+
+    for p in get_python_installs():
+        if not version_filter(p):
+            continue
+        if current_install := pythons.get(implementation_version_tuple(p)):
+            if p.implementation_version <= current_install.implementation_version:
+                continue
+
+        pythons[implementation_version_tuple(p)] = p
+
+    return sorted(pythons.values(), key=operator.attrgetter("version"))
 
 
 @contextlib.contextmanager
 def build_test_envs(
-    pythons: list[str],
+    pythons: list[PythonInstall],
     extras: list[str],
     test_path: Path,
     quiet_uv: bool,
@@ -171,10 +176,10 @@ def build_test_envs(
     extra_str = f"[{','.join(extras)}]" if extras else ""
 
     with tempfile.TemporaryDirectory(dir=test_path) as tempdir:
-        for py_ver in pythons:
-            env_folder = Path(tempdir) / py_ver.replace(".", "_")
+        for py in pythons:
+            env_folder = str(Path(tempdir) / py.version_str.replace(".", "_"))
             # Create venv
-            call_uv("venv", "--python", py_ver, env_folder, quiet_uv=quiet_uv)
+            call_uv("venv", "--python", py.executable, env_folder, quiet_uv=quiet_uv)
 
             # Install dependencies with extras if given
             call_uv(
@@ -249,6 +254,19 @@ def get_parser():
         help="Test against available pre-release Python versions"
     )
     parser.add_argument(
+        "++pypy",
+        action="store_true",
+        help="Include PyPy installs in testing (will not install them if missing)."
+    )
+    parser.add_argument(
+        "++install-missing",
+        action="store_true",
+        help=(
+            "Install missing major CPython releases from UV if available. "
+            "(This will not update patch releases.)"
+        )
+    )
+    parser.add_argument(
         "++parallel",
         action="store_true",
         help=(
@@ -265,10 +283,34 @@ def main() -> PyTestExit:
     parser = get_parser()
     test_args, pytest_args = parser.parse_known_args()
 
+    spec = get_project_specifier(project_path=Path.cwd())
+
     pythons = get_viable_pythons(
-        all_versions=False,
+        spec=spec,
         prereleases=test_args.prereleases,
+        pypy=test_args.pypy,
     )
+
+    if test_args.install_missing:
+        uv_pythons = get_uv_python_installables()
+        python_releases = {p.version[:2] for p in pythons if p.implementation == "cpython"}
+        missing_versions = [
+            f"{v.major}.{v.minor}" for v in uv_pythons
+            if (v.major, v.minor) not in python_releases
+            and spec.contains(v)
+        ]
+        if missing_versions:
+            call_uv(
+                "python", "install", *missing_versions,
+                quiet_uv=test_args.quiet
+            )
+
+            # redo the search to pickup the new installs
+            pythons = get_viable_pythons(
+                spec=spec,
+                prereleases=test_args.prereleases,
+                pypy=test_args.pypy,
+            )
 
     cwd = Path.cwd()
     test_path = cwd / "env_testing"
