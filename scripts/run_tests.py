@@ -3,6 +3,7 @@
 # dependencies = [
 #     "uv>=0.4.20",
 #     "packaging>=24.1",
+#     "ducktools-classbuilder>=0.7.2",
 # ]
 # ///
 """
@@ -18,6 +19,7 @@ import os
 import sys
 
 import argparse
+import contextlib
 import enum
 import json
 import re
@@ -27,6 +29,7 @@ import tomllib
 
 from pathlib import Path
 
+from ducktools.classbuilder import slotclass, Field, SlotFields
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 import uv
@@ -49,6 +52,14 @@ class PyTestExit(enum.IntEnum):
     CMD_ERROR = 4
     NO_TESTS = 5
     NO_ENVS = 404  # Custom error for no environments
+
+
+@slotclass
+class PythonVEnv:
+    __slots__ = SlotFields(exe=Field(), dependencies=Field())
+
+    exe: Path
+    dependencies: set[str]
 
 
 def call_uv(*args, quiet_uv=False):
@@ -151,64 +162,79 @@ def get_viable_pythons(
     return version_list
 
 
-def run_tests_in_version(
-    py_ver: str,
+@contextlib.contextmanager
+def build_test_envs(
+    pythons: list[str],
     extras: list[str],
-    pytest_args: list[str],
-    quiet_uv: bool,
     test_path: Path,
+    quiet_uv: bool,
+) -> list[Path]:
+
+    installs: list[PythonVEnv] = []
+
+    extra_str = f"[{','.join(extras)}]" if extras else ""
+
+    with tempfile.TemporaryDirectory(dir=test_path) as tempdir:
+        for py_ver in pythons:
+            env_folder = Path(tempdir) / py_ver.replace(".", "_")
+            # Create venv
+            call_uv("venv", "--python", py_ver, env_folder, quiet_uv=quiet_uv)
+
+            # Install dependencies with extras if given
+            call_uv(
+                "pip", "install",
+                "--python", env_folder,
+                "-e", f".{extra_str}",
+                quiet_uv=quiet_uv
+            )
+
+            try:
+                pip_list = subprocess.run(
+                    [
+                        UV_PATH, "pip", "list",
+                        "--python", env_folder,
+                        "--format", "json",
+                    ],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+            except subprocess.CalledProcessError as e:
+                raise RuntimeError(f"Failed to list dependencies with UV: {e.stderr}")
+
+            dependency_set = {p["name"] for p in json.loads(pip_list.stdout)}
+            if "pytest" not in dependency_set:
+                call_uv("pip", "install", "--python", env_folder, "pytest", quiet_uv=quiet_uv)
+
+            python_path = Path(env_folder) / PYTHON_EXE
+            assert python_path.exists()
+
+            installs.append(PythonVEnv(python_path, dependency_set))  # noqa
+        yield installs
+
+
+def run_tests_in_version(
+    venv: PythonVEnv,
+    pytest_args: list[str],
     no_coverage: bool = False,
     capture_output: bool = False,
 ):
+    python_path = venv.exe
+    dependency_set = venv.dependencies
 
-    with tempfile.TemporaryDirectory(
-        dir=test_path,
-        prefix=f"{py_ver.replace('.', '_')}_",
-    ) as tempdir:
-        # Create venv and install package
-        call_uv("venv", "--python", py_ver, tempdir, quiet_uv=quiet_uv)
+    cmd = [str(python_path), "-m", "pytest", "--color=yes", *pytest_args]
+    if no_coverage and "pytest-cov" in dependency_set:
+        cmd.append("--no-cov")
 
-        extra_str = f"[{','.join(extras)}]" if extras else ""
-
-        # Install package as editable so coverage works
-        call_uv(
-            "pip", "install",
-            "--python", tempdir,
-            "-e", f".{extra_str}",
-            quiet_uv=quiet_uv
-        )
-
-        # Check if pytest is installed, if not, install it
-        pip_list = subprocess.run(
-            [
-                UV_PATH, "pip", "list",
-                "--python", tempdir,
-                "--format", "json",
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        dependency_set = {p["name"] for p in json.loads(pip_list.stdout)}
-        if "pytest" not in dependency_set:
-            call_uv("pip", "install", "--python", tempdir, "pytest", quiet_uv=quiet_uv)
-
-        python_path = Path(tempdir) / PYTHON_EXE
-        assert python_path.exists()
-
-        cmd = [str(python_path), "-m", "pytest", "--color=yes", *pytest_args]
-        if no_coverage and "pytest-cov" in dependency_set:
-            cmd.append("--no-cov")
-
-        out = subprocess.run(
-            cmd,
-            capture_output=capture_output,
-        )
+    out = subprocess.run(
+        cmd,
+        capture_output=capture_output,
+    )
 
     return out
 
 
-def main() -> PyTestExit:
+def get_parser():
     parser = argparse.ArgumentParser(prefix_chars="+")
     parser.add_argument(
         "+e", "++extras",
@@ -242,6 +268,11 @@ def main() -> PyTestExit:
         )
     )
 
+    return parser
+
+
+def main() -> PyTestExit:
+    parser = get_parser()
     test_args, pytest_args = parser.parse_known_args()
 
     pythons = get_viable_pythons(
@@ -253,56 +284,59 @@ def main() -> PyTestExit:
     test_path = cwd / "env_testing"
     test_path.mkdir(exist_ok=True)
 
-    result_codes: list[PyTestExit] = []
+    # Build the temporary environments as a context manager
+    with build_test_envs(
+        pythons=pythons,
+        extras=test_args.extras,
+        test_path=test_path,
+        quiet_uv=test_args.quiet,
+    ) as python_venvs:
 
-    if test_args.parallel:
-        # Threads are appropriate as subprocess does not hold the GIL
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        try:
-            with ThreadPoolExecutor() as pool:
-                futures = [
-                    pool.submit(
-                        run_tests_in_version,
-                        py_ver=python,
-                        extras=test_args.extras,
+        result_codes: list[PyTestExit] = []
+
+        if test_args.parallel:
+            # Threads are appropriate as subprocess does not hold the GIL
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            try:
+                with ThreadPoolExecutor() as pool:
+                    futures = [
+                        pool.submit(
+                            run_tests_in_version,
+                            venv=venv,
+                            pytest_args=pytest_args,
+                            no_coverage=True,
+                            capture_output=True,
+                        )
+                        for venv in python_venvs
+                    ]
+
+                    for r in as_completed(futures):
+                        result = r.result()
+                        result_codes.append(PyTestExit(result.returncode))
+                        if result.stderr:
+                            sys.stderr.buffer.write(result.stderr)
+                        if result.stdout:
+                            sys.stdout.buffer.write(result.stdout)
+            finally:
+                try:
+                    test_path.rmdir()
+                except OSError:
+                    pass
+
+        else:
+            try:
+                for venv in python_venvs:
+                    result = run_tests_in_version(
+                        venv=venv,
                         pytest_args=pytest_args,
-                        quiet_uv=True,
-                        test_path=test_path,
-                        no_coverage=True,
-                        capture_output=True,
+                        no_coverage=False,
                     )
-                    for python in pythons
-                ]
-
-                for r in as_completed(futures):
-                    result = r.result()
                     result_codes.append(PyTestExit(result.returncode))
-                    if result.stderr:
-                        sys.stderr.buffer.write(result.stderr)
-                    if result.stdout:
-                        sys.stdout.buffer.write(result.stdout)
-        finally:
-            try:
-                test_path.rmdir()
-            except OSError:
-                pass
-
-    else:
-        try:
-            for python in pythons:
-                result = run_tests_in_version(
-                    py_ver=python,
-                    extras=test_args.extras,
-                    pytest_args=pytest_args,
-                    quiet_uv=test_args.quiet,
-                    test_path=test_path,
-                )
-                result_codes.append(PyTestExit(result.returncode))
-        finally:
-            try:
-                test_path.rmdir()
-            except OSError:
-                pass
+            finally:
+                try:
+                    test_path.rmdir()
+                except OSError:
+                    pass
 
     if not result_codes:
         return PyTestExit.NO_ENVS
