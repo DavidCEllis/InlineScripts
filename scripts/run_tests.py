@@ -3,7 +3,6 @@
 # dependencies = [
 #     "uv>=0.4.20",
 #     "packaging>=24.1",
-#     "ducktools-classbuilder>=0.7.2",
 # ]
 # ///
 """
@@ -26,10 +25,10 @@ import re
 import subprocess
 import tempfile
 import tomllib
+import typing
 
 from pathlib import Path
 
-from ducktools.classbuilder import slotclass, Field, SlotFields
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 import uv
@@ -54,10 +53,7 @@ class PyTestExit(enum.IntEnum):
     NO_ENVS = 404  # Custom error for no environments
 
 
-@slotclass
-class PythonVEnv:
-    __slots__ = SlotFields(exe=Field(), dependencies=Field())
-
+class PythonVEnv(typing.NamedTuple):
     exe: Path
     dependencies: set[str]
 
@@ -168,7 +164,7 @@ def build_test_envs(
     extras: list[str],
     test_path: Path,
     quiet_uv: bool,
-) -> list[Path]:
+) -> list[PythonVEnv]:
 
     installs: list[PythonVEnv] = []
 
@@ -209,7 +205,7 @@ def build_test_envs(
             python_path = Path(env_folder) / PYTHON_EXE
             assert python_path.exists()
 
-            installs.append(PythonVEnv(python_path, dependency_set))  # noqa
+            installs.append(PythonVEnv(python_path, dependency_set))
         yield installs
 
 
@@ -248,12 +244,6 @@ def get_parser():
         help="Don't display UV output, always on if running parallel tests"
     )
     parser.add_argument(
-        "++all_versions",
-        action="store_true",
-        help="Test against *EVERY* patch version of Python available "
-             "from UV that matches the spec (NOT RECOMMENDED)",
-    )
-    parser.add_argument(
         "++prereleases",
         action="store_true",
         help="Test against available pre-release Python versions"
@@ -276,7 +266,7 @@ def main() -> PyTestExit:
     test_args, pytest_args = parser.parse_known_args()
 
     pythons = get_viable_pythons(
-        all_versions=test_args.all_versions,
+        all_versions=False,
         prereleases=test_args.prereleases,
     )
 
