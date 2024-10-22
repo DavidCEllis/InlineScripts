@@ -246,7 +246,7 @@ def get_parser():
     parser.add_argument(
         "+q", "++quiet",
         action="store_true",
-        help="Don't display UV output, always on if running parallel tests"
+        help="Don't display UV output."
     )
     parser.add_argument(
         "++prereleases",
