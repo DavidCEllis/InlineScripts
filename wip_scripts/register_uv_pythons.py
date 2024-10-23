@@ -15,11 +15,12 @@ import argparse
 import os.path
 
 from ducktools.pythonfinder.shared import get_uv_pythons, PythonInstall
+from ducktools.pythonfinder.win32 import get_registered_pythons
 from packaging.version import Version
 
 
-COMPANY = "uv"
-COMPANY_NAME = "Astral"
+COMPANY_TAG = "uv"
+COMPANY_NAME = "Astral Software Inc."
 SUPPORT_URL = "https://astral.sh/uv"
 
 
@@ -43,6 +44,7 @@ def get_version_details(p: PythonInstall):
             "SysVersion": p.version_str,
             "SysArchitecture": p.architecture,
             "InstallPath": {
+                "(Default)": os.path.dirname(p.executable),
                 "ExecutablePath": p.executable,
                 "WindowedExecutablePath": windowed_path,
             },
