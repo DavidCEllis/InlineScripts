@@ -140,6 +140,10 @@ def build_env(
 
     subprocess.run(venv_cmd, check=True)
 
+    # Install pip in the environment
+    pip_cmd = ["uv", "pip", "install", "pip", "--python", str(venv_folder)]
+    subprocess.run(pip_cmd, check=True)
+
     project_cmd = f"{project_path}{extras_str}"
 
     pip_command = [
