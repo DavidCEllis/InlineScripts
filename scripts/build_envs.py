@@ -3,25 +3,24 @@
 # dependencies = [
 #     "uv>=0.4.20",
 #     "packaging>=24.1",
+#     "ducktools-pythonfinder>=0.6.7",
 # ]
 # ///
 """
-Build virtual environments with the relevant python versions supported by a module
+Build virtual environments with the relevant python versions supported by a module.
+It should always use the newest patch of whichever version it is installing.
 """
-import sys
-
 import argparse
-import os
-import re
 import shutil
 import subprocess
 import tomllib
 
 from pathlib import Path
 
-import uv
+from ducktools.pythonfinder import list_python_installs, PythonInstall
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
+import uv
 
 
 UV_PATH = uv.find_uv_bin()
@@ -33,59 +32,17 @@ def call_uv(*args, quiet_uv=False):
     subprocess.run([*uv_cmd, *args], check=True)
 
 
-def get_available_pythons(all_versions: bool = False) -> list[str]:
-    """
-    Get all python install version numbers available from UV
+def get_matching_python(spec: SpecifierSet, versions: list[PythonInstall], mode: str) -> PythonInstall:
+    viable_versions = [s for s in versions if spec.contains(s.version_str)]
 
-    :param all_versions: Include every patch release and not just the latest
-    :return: list of version strings
-    """
-    # CPython installs listed by UV - only want downloadable installs
-    version_re = re.compile(
-        r"(?m)^cpython-(?P<version>\d+.\d+.\d+(?:a|b|rc)?\d*).*$"
-    )
+    def install_version(install):
+        return Version(install.version_str)
 
-    cmd = [UV_PATH, "python", "list"]
-    if all_versions:
-        cmd.append("--all-versions")
-
-    # If pyenv is on `PATH` uv python list is ultra slow
-    # So we hide pyenv to make this faster
-    env = os.environ.copy()
-    pyenv_root = env.get("PYENV_ROOT")
-    if pyenv_root:
-        path = env["PATH"]
-        sep = ";" if sys.platform == "win32" else ":"
-        new_path = sep.join(
-            p for p in path.split(sep)
-            if not p.startswith(pyenv_root)
-        )
-        env["PATH"] = new_path
-
-    data = subprocess.run(
-        [
-            UV_PATH,
-            "python",
-            "list",
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
-        env=env,
-    )
-
-    matches = version_re.findall(data.stdout)
-
-    return matches
-
-
-def get_matching_python(spec: SpecifierSet, versions: list[str], mode: str) -> str:
-    viable_versions = [s for s in versions if spec.contains(s)]
     match mode:
         case "oldest":
-            return min(viable_versions, key=Version)
+            return min(viable_versions, key=install_version)
         case "newest":
-            return max(viable_versions, key=Version)
+            return max(viable_versions, key=install_version)
         case _:
             raise RuntimeError(f"Mode can only be 'oldest' or 'newest', given {mode!r}")
 
@@ -136,7 +93,7 @@ def build_env(
     spec = SpecifierSet(requires_python)
     base_python = get_matching_python(spec, pythons, mode)
 
-    venv_cmd = ["uv", "venv", str(venv_folder), "--python", base_python]
+    venv_cmd = ["uv", "venv", str(venv_folder), "--python", base_python.executable]
 
     subprocess.run(venv_cmd, check=True)
 
@@ -162,7 +119,16 @@ def build_envs(
     extras: list[str],
     subfolders: bool = False
 ) -> None:
-    pythons = get_available_pythons(all_versions=False)
+    pythons = []
+    major_pythons = set()
+
+    for inst in list_python_installs():
+        if inst.implementation != "cpython":
+            continue
+        if inst.version[:2] in major_pythons:
+            continue
+        major_pythons.add(inst.version[:2])
+        pythons.append(inst)
 
     if not subfolders:
         project_path = Path.cwd()
