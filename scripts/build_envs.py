@@ -32,8 +32,13 @@ def call_uv(*args, quiet_uv=False):
     subprocess.run([*uv_cmd, *args], check=True)
 
 
-def get_matching_python(spec: SpecifierSet, versions: list[PythonInstall], mode: str) -> PythonInstall:
+def get_matching_python(
+    spec: SpecifierSet,
+    versions: list[PythonInstall],
+    mode: str,
+) -> PythonInstall:
     viable_versions = [s for s in versions if spec.contains(s.version_str)]
+    print([v.version for v in viable_versions])
 
     def install_version(install):
         return Version(install.version_str)
@@ -52,7 +57,8 @@ def build_env(
     pythons: list[str],
     mode: str,
     extras: list[str],
-    clear_existing: bool = True
+    prereleases: bool = False,
+    clear_existing: bool = True,
 ) -> None:
     toml_file = project_path / "pyproject.toml"
     venv_folder = project_path / VENV_BASE
@@ -90,7 +96,7 @@ def build_env(
     else:
         extras_str = ""
 
-    spec = SpecifierSet(requires_python)
+    spec = SpecifierSet(requires_python, prereleases=prereleases)
     base_python = get_matching_python(spec, pythons, mode)
 
     venv_cmd = ["uv", "venv", str(venv_folder), "--python", base_python.executable]
@@ -117,7 +123,8 @@ def build_env(
 def build_envs(
     mode: str,
     extras: list[str],
-    subfolders: bool = False
+    subfolders: bool = False,
+    prereleases: bool = False,
 ) -> None:
     pythons = []
     major_pythons = set()
@@ -132,7 +139,7 @@ def build_envs(
 
     if not subfolders:
         project_path = Path.cwd()
-        build_env(project_path, pythons, mode, extras)
+        build_env(project_path, pythons, mode, extras, prereleases=prereleases)
     else:
         base_project_paths = Path.cwd().glob("*/")
         for p in base_project_paths:
@@ -174,6 +181,12 @@ def build_parser():
         help="Add extras if present in the base environment."
     )
 
+    parser.add_argument(
+        "--prereleases",
+        action="store_true",
+        help="Include prerelease Python versions"
+    )
+
     return parser
 
 
@@ -184,7 +197,8 @@ def main():
     build_envs(
         mode=args.mode,
         extras=args.extra,
-        subfolders=args.subfolders
+        subfolders=args.subfolders,
+        prereleases=args.prereleases,
     )
 
 
