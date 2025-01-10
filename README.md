@@ -8,16 +8,23 @@ to declare dependencies as originally specified in PEP-723.
 
 These scripts are designed to be used with an inline dependency script runner.
 
-The `build_zipapps.py` script requires `uv` be installed on `PATH` and will generate
-bundled zipapps with [ducktools-env](https://github.com/DavidCEllis/ducktools-env) that
-can be used from any Python install of 3.10 or later.
+If you use `uv` these can be launched with: `uv run scriptname.py`
 
-It puts the scripts in `~/bin` on Linux/MacOS and `%USERPROFILE%\bin` on Windows.
+If you use `ducktools-env` these can be launched with `dtrun scriptname.py`
+or registered with `ducktools-env register scriptname.py` and subsequently
+run with `dtrun scriptname` (without .py) from any folder.
 
 ## Included Scripts ##
 
 These scripts are just a random collection of tools I find useful
 
+* build_envs
+  * Create a venv with an appropriate python version for the current 
+    project folder and install the project dependencies into it
+* pylauncher
+  * Open up a gui launcher to launch a REPL from any python install that
+    `ducktools-pythonfinder` can discover
+  * This may be turned into a more complete application at some point
 * run_tests
   * A script that will run pytest in the current folder for the latest patch of every 
     minor Python release available via `uv` that satisfies `requires-python` in the 
