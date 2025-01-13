@@ -6,6 +6,7 @@
 # ]
 # ///
 
+import signal
 import subprocess
 
 from ducktools.pythonfinder import list_python_installs
@@ -13,6 +14,33 @@ from ducktools.pythonfinder import list_python_installs
 from textual.app import App
 from textual.binding import Binding
 from textual.widgets import DataTable, Footer, Header
+
+
+class IgnoreSignals:
+    @staticmethod
+    def null_handler(signum, frame):
+        # This just ignores signals, used to ignore in the parent process temporarily
+        # The child process will still receive the signals.
+        pass
+
+    def __init__(self, signums: list[int]):
+        self.old_signals = {}
+        self.signums = signums
+
+    def __enter__(self):
+        if self.old_signals:
+            raise RuntimeError("ignore_signals is not reentrant")
+
+        for signum in self.signums:
+            self.old_signals[signum] = signal.signal(signum, self.null_handler)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        for signum, handler in self.old_signals.items():
+            signal.signal(signum, handler)
+
+
+def ignore_keyboardinterrupt():
+    return IgnoreSignals([signal.SIGINT])
 
 
 class ManagerApp(App):
@@ -33,8 +61,9 @@ class ManagerApp(App):
         python_exe = row.row_key.value
 
         # Suspend the app and launch python
-        with self.suspend():
-            subprocess.run(python_exe)
+        # Ignore keyboard interrupts otherwise the program will exit when this exits.
+        with ignore_keyboardinterrupt(), self.suspend():
+            subprocess.run([python_exe])
 
         # Redraw
         self.refresh()
