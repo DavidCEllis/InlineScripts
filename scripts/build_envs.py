@@ -38,7 +38,7 @@ def get_matching_python(
     mode: str,
 ) -> PythonInstall:
     viable_versions = [s for s in versions if spec.contains(s.version_str)]
-    print([v.version for v in viable_versions])
+    # print([v.version for v in viable_versions])
 
     def install_version(install):
         return Version(install.version_str)
