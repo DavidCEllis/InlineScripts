@@ -21,6 +21,10 @@ These scripts are just a random collection of tools I find useful
 * build_envs
   * Create a venv with an appropriate python version for the current 
     project folder and install the project dependencies into it
+* delete_broken_venvs
+  * Search a folder and any subfolders for Python virtual environments
+  * List any that are found where the parent python runtime no longer exists
+  * Optionally delete these VEnvs automatically
 * pylauncher
   * Open up a gui launcher to launch a REPL from any python install that
     `ducktools-pythonfinder` can discover
