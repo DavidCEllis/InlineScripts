@@ -14,6 +14,17 @@ If you use `ducktools-env` these can be launched with `dtrun scriptname.py`
 or registered with `ducktools-env register scriptname.py` and subsequently
 run with `dtrun scriptname` (without .py) from any folder.
 
+For example.
+
+Register the script under an alias:
+`ducktools-env register -n brokenvs delete_broken_venvs.py `
+
+List registered Scripts:
+`ducktools-env list --scripts`
+
+Launch the registered script using its alias:
+`dtrun brokenvs`
+
 ## Included Scripts ##
 
 These scripts are just a random collection of tools I find useful
