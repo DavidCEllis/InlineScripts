@@ -102,7 +102,7 @@ def askdirectory(**options):
 def convert_folder(src, dest, bitdepth=16, samplerate=48000, input_fmt="wav"):
     src_path = Path(src)
     dest_path = Path(dest)
-    sources = list(src_path.glob("**/*.wav"))
+    sources = list(src_path.glob("**/*.wav", case_sensitive=False))
 
     for i, f in enumerate(tqdm(sources)):
         f_dest = (dest_path / f.relative_to(src_path)).with_suffix(".flac")
