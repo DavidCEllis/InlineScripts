@@ -36,10 +36,6 @@ These scripts are just a random collection of tools I find useful
   * Search a folder and any subfolders for Python virtual environments
   * List any that are found where the parent python runtime no longer exists
   * Optionally delete these VEnvs automatically
-* pylauncher
-  * Open up a gui launcher to launch a REPL from any python install that
-    `ducktools-pythonfinder` can discover
-  * This may be turned into a more complete application at some point
 * run_tests
   * A script that will run pytest in the current folder for the latest patch of every 
     minor Python release available via `uv` that satisfies `requires-python` in the 
@@ -47,3 +43,6 @@ These scripts are just a random collection of tools I find useful
 * find_low_bitrate_music
   * Finds and lists any albums of MP3 tracks that were ripped below a specified bitrate
     (If only I'd ripped everything to flac years ago)
+* convert_to_flac
+  * Converts a folder of audio from `.wav` to 16 bit 48k `.flac`
+  * This was to save on drive space when loading a collection of drum samples to a sampler
