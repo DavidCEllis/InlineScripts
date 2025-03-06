@@ -17,6 +17,7 @@ If an error occurs in testing the result code returned will be the largest error
 thrown by any pytest run.
 """
 import os
+import os.path
 import sys
 
 import argparse
@@ -30,6 +31,7 @@ import tempfile
 import tomllib
 
 from pathlib import Path
+from collections.abc import Generator
 
 from ducktools.classbuilder.prefab import Prefab
 from ducktools.pythonfinder import get_python_installs, PythonInstall
@@ -169,7 +171,7 @@ def build_test_envs(
     extras: list[str],
     test_path: Path,
     quiet_uv: bool,
-) -> list[PythonVEnv]:
+) -> Generator[list[PythonVEnv]]:
 
     installs: list[PythonVEnv] = []
 
@@ -177,7 +179,9 @@ def build_test_envs(
 
     with tempfile.TemporaryDirectory(dir=test_path) as tempdir:
         for py in pythons:
-            env_folder = str(Path(tempdir) / py.version_str.replace(".", "_"))
+            subfolder = f"{py.implementation}_{py.version_str.replace('.', '_')}"
+
+            env_folder = os.path.join(tempdir, subfolder)
             # Create venv
             call_uv("venv", "--python", py.executable, env_folder, quiet_uv=quiet_uv)
 
