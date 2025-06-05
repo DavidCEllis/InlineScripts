@@ -99,7 +99,9 @@ def build_env(
     spec = SpecifierSet(requires_python, prereleases=prereleases)
     base_python = get_matching_python(spec, pythons, mode)
 
-    venv_cmd = ["uv", "venv", str(venv_folder), "--python", base_python.executable]
+    # venv_cmd = ["uv", "venv", str(venv_folder), "--python", base_python.executable]
+    # Use regular venv command instead of UV - newer python has a better venv config file
+    venv_cmd = [base_python.executable, "-m", "venv", venv_folder, "--without-pip"]
 
     subprocess.run(venv_cmd, check=True)
 
