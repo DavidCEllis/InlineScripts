@@ -118,24 +118,24 @@ def get_uv_python_installables() -> list[Version]:
     return [Version(m) for m in matches]
 
 
-def get_project_specifier(project_path: Path) -> SpecifierSet:
-    # Try to get a requires-python value
-    toml_file = project_path / "pyproject.toml"
-
-    if not toml_file.exists():
-        raise RuntimeError(f"No pyproject.toml file found at \"{project_path}\"")
-
-    pyproject = tomllib.loads(toml_file.read_text())
-
+def get_project_specifier(pyproject: dict) -> SpecifierSet:
     try:
         requires_python = pyproject["project"]["requires-python"]
     except KeyError:
         raise RuntimeError(
-            f"Module folder \"{project_path}\" must have a pyproject.toml "
-            f"file with a 'project.requires-python' key"
+            "pyproject.toml file must have a 'project.requires-python' key"
         )
 
     return SpecifierSet(requires_python)
+
+
+def has_dev_group(pyproject: dict):
+    # Try to read the dev dependency group
+    try:
+        _ = pyproject["dependency-groups"]["dev"]
+    except KeyError:
+        return False
+    return True
 
 
 def get_viable_pythons(
@@ -173,6 +173,7 @@ def get_viable_pythons(
 def build_test_envs(
     pythons: list[PythonInstall],
     extras: list[str],
+    dev_group: bool,
     test_path: Path,
     quiet_uv: bool,
 ) -> Generator[list[PythonVEnv]]:
@@ -190,12 +191,16 @@ def build_test_envs(
             call_uv("venv", "--python", py.executable, env_folder, quiet_uv=quiet_uv)
 
             # Install dependencies with extras if given
-            call_uv(
+            uv_pip_cmd = [
                 "pip", "install",
                 "--python", env_folder,
-                "-e", f".{extra_str}",
-                quiet_uv=quiet_uv
-            )
+                "-e", f".{extra_str}"
+            ]
+
+            if dev_group:
+                uv_pip_cmd.extend(["--group", "dev"])
+
+            call_uv(*uv_pip_cmd, quiet_uv=quiet_uv)
 
             try:
                 pip_list = subprocess.run(
@@ -219,6 +224,7 @@ def build_test_envs(
             assert python_path.exists()
 
             installs.append(PythonVEnv(python_path, dependency_set))
+
         yield installs
 
 
@@ -291,7 +297,14 @@ def main() -> PyTestExit:
     parser = get_parser()
     test_args, pytest_args = parser.parse_known_args()
 
-    spec = get_project_specifier(project_path=Path.cwd())
+    pyproject_path = Path.cwd() / "pyproject.toml"
+
+    if not pyproject_path.exists():
+        raise RuntimeError(f"No pyproject.toml file found at \"{Path.cwd()}\"")
+    
+    pyproject_toml = tomllib.loads(pyproject_path.read_text())
+    spec = get_project_specifier(pyproject=pyproject_toml)
+    dev_group = has_dev_group(pyproject=pyproject_toml)
 
     pythons = get_viable_pythons(
         spec=spec,
@@ -328,6 +341,7 @@ def main() -> PyTestExit:
     with build_test_envs(
         pythons=pythons,
         extras=test_args.extras,
+        dev_group=dev_group,
         test_path=test_path,
         quiet_uv=test_args.quiet,
     ) as python_venvs:
