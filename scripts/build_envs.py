@@ -1,7 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "uv>=0.4.20",
 #     "packaging>=24.1",
 #     "ducktools-pythonfinder>=0.6.7",
 # ]
@@ -20,11 +19,15 @@ from pathlib import Path
 from ducktools.pythonfinder import list_python_installs, PythonInstall
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
-import uv
 
 
-UV_PATH = uv.find_uv_bin()
 VENV_BASE = ".venv"
+UV_PATH = shutil.which("uv")
+
+if UV_PATH is None:
+    raise FileNotFoundError(
+        "Could not find the path to the 'uv' binary, make sure 'uv' is installed and available on PATH"
+    )
 
 
 def call_uv(*args, quiet_uv=False):

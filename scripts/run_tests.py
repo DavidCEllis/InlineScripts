@@ -1,7 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "uv>=0.4.20",
 #     "packaging>=24.1",
 #     "ducktools-pythonfinder>=0.6.0",
 #     "ducktools-classbuilder>=0.7.2",
@@ -26,6 +25,7 @@ import enum
 import json
 import operator
 import re
+import shutil
 import subprocess
 import tempfile
 import tomllib
@@ -37,7 +37,6 @@ from ducktools.classbuilder.prefab import Prefab
 from ducktools.pythonfinder import get_python_installs, PythonInstall
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
-import uv
 
 
 if sys.platform == "win32":
@@ -46,7 +45,12 @@ else:
     PYTHON_EXE = "bin/python"
 
 
-UV_PATH = uv.find_uv_bin()
+UV_PATH = shutil.which("uv")
+
+if UV_PATH is None:
+    raise FileNotFoundError(
+        "Could not find the path to the 'uv' binary, make sure 'uv' is installed and available on PATH"
+    )
 
 
 class PyTestExit(enum.IntEnum):
