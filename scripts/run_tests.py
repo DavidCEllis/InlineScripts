@@ -312,6 +312,10 @@ def main() -> PyTestExit:
     if not pyproject_path.exists():
         raise RuntimeError(f"No pyproject.toml file found at \"{Path.cwd()}\"")
     
+    uv_lock_path = cwd / "uv.lock"
+    if not uv_lock_path.exists():
+        call_uv("lock")
+    
     pyproject_toml = tomllib.loads(pyproject_path.read_text())
     spec = get_project_specifier(pyproject=pyproject_toml)
     
