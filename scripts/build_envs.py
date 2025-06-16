@@ -41,7 +41,9 @@ def get_matching_python(
     mode: str,
 ) -> PythonInstall:
     viable_versions = [s for s in versions if spec.contains(s.version_str)]
-    # print([v.version for v in viable_versions])
+    
+    if not viable_versions:
+        raise RuntimeError(f"Could not find a matching python version for {spec}")
 
     def install_version(install):
         return Version(install.version_str)
@@ -94,33 +96,20 @@ def build_env(
         # Usable extras are those given and defined - use intersection
         usable_extras.extend(set(extras) & extra_keys)
 
-    if usable_extras:
-        extras_str = "[" + ", ".join(usable_extras) + "]"
-    else:
-        extras_str = ""
-
     spec = SpecifierSet(requires_python, prereleases=prereleases)
     base_python = get_matching_python(spec, pythons, mode)
 
-    # venv_cmd = ["uv", "venv", str(venv_folder), "--python", base_python.executable]
-    # Use regular venv command instead of UV - newer python has a better venv config file
-    venv_cmd = [base_python.executable, "-m", "venv", venv_folder, "--without-pip"]
-
-    subprocess.run(venv_cmd, check=True)
-
-    # Install pip in the environment
-    pip_cmd = ["uv", "pip", "install", "pip", "--python", str(venv_folder)]
-    subprocess.run(pip_cmd, check=True)
-
-    project_cmd = f"{project_path}{extras_str}"
-
-    pip_command = [
-        "uv", "pip", "install",
-        "-e", project_cmd,
-        "--python", str(venv_folder),
+    # Sync the venv with UV
+    sync_command = [
+        UV_PATH, "sync",
+        "--directory", str(project_path),
+        "--python", base_python.executable,
     ]
 
-    subprocess.run(pip_command, check=True)
+    for extra in usable_extras:
+        sync_command.extend(["--extra", extra])
+
+    subprocess.run(sync_command, check=True)
 
     print(f"Built environment in \"{venv_folder}\"")
 
