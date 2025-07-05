@@ -136,11 +136,16 @@ def get_viable_pythons(
     spec: SpecifierSet,
     prereleases: bool = False,
     pypy: bool = False,
+    graalpy: bool = False
 ) -> list[PythonInstall]:
 
     # Get python installs from the system
-    implementations = {"cpython", "pypy"} if pypy else {"cpython"}
-
+    implementations = {"cpython"}
+    if pypy:
+        implementations.add("pypy")
+    if graalpy:
+        implementations.add("graalpy")
+    
     # The full filter for valid python versions
     def version_filter(install):
         valid_release = (prereleases or install.version[3] == "final")
@@ -263,17 +268,22 @@ def get_parser():
     parser.add_argument(
         "+q", "++quiet",
         action="store_true",
-        help="Don't display UV output."
+        help="Don't display UV output.",
     )
     parser.add_argument(
         "++prereleases",
         action="store_true",
-        help="Test against available pre-release Python versions"
+        help="Test against available pre-release Python versions",
     )
     parser.add_argument(
         "++pypy",
         action="store_true",
-        help="Include PyPy installs in testing (will not install them if missing)."
+        help="Include PyPy installs in testing (will not install them if missing).",
+    )
+    parser.add_argument(
+        "++graalpy",
+        action="store_true",
+        help="Include GraalPy installs in testing (will not install them if missing).",
     )
     parser.add_argument(
         "++install-missing",
@@ -281,7 +291,7 @@ def get_parser():
         help=(
             "Install missing major CPython releases from UV if available. "
             "(This will not update patch releases.)"
-        )
+        ),
     )
     parser.add_argument(
         "++parallel",
@@ -290,7 +300,7 @@ def get_parser():
             "Run tests for each Python version in parallel "
             "(This does not run individual tests in parallel! "
             "Still has many of the same issues though.)"
-        )
+        ),
     )
     parser.add_argument(
         "++lowest",
@@ -323,6 +333,7 @@ def main() -> PyTestExit:
         spec=spec,
         prereleases=test_args.prereleases,
         pypy=test_args.pypy,
+        graalpy=test_args.graalpy,
     )
 
     if test_args.install_missing:
@@ -344,6 +355,7 @@ def main() -> PyTestExit:
                 spec=spec,
                 prereleases=test_args.prereleases,
                 pypy=test_args.pypy,
+                graalpy=test_args.graalpy,
             )
 
     test_path = cwd / TEST_ENV_FOLDER
