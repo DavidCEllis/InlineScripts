@@ -112,7 +112,7 @@ class MidiModifier(Prefab):
         # for every channel.
         last_pressures = {}
 
-        print(f"Starting virtual device with scaling: {scaling} - Pressure Mode")
+        print(f"Starting virtual device with max expression: {self.max_expression}")
         print("Press ctrl + c to close")
         with mido.open_output(self.virtual_device, virtual=True) as midi_out:  # type: ignore
             with mido.open_input(self.main_source) as main, mido.open_input(self.expression_source) as expr:  # type: ignore
