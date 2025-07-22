@@ -145,7 +145,7 @@ def get_viable_pythons(
         implementations.add("pypy")
     if graalpy:
         implementations.add("graalpy")
-    
+
     # The full filter for valid python versions
     def version_filter(install):
         valid_release = (prereleases or install.version[3] == "final")
@@ -185,15 +185,15 @@ def sync_test_envs(
     for py in pythons:
         for mode in resolution_modes:
             # sync environments with both resolution types
-    
+
             env_path = test_path / mode / py.implementation / ".".join(str(v) for v in py.version[:2])
-            
+
             # Make the parent folders if they don't exist
             env_path.parent.mkdir(exist_ok=True, parents=True)
-            
+
             # Sync the environment
             uv_cmd = [
-                "sync", 
+                "sync",
                 "--python", py.executable,
             ]
             for extra in extras:
@@ -205,10 +205,11 @@ def sync_test_envs(
                     "UV_RESOLUTION": mode,
                     "UV_PROJECT_ENVIRONMENT": str(env_path),
                     "UV_FROZEN": "true",
+                    "VIRTUAL_ENV": str(env_path),
                 },
                 quiet_uv=quiet_uv,
             )
-        
+
             # Check if pytest is in the environment
             try:
                 pip_list = subprocess.run(
@@ -321,14 +322,14 @@ def main() -> PyTestExit:
 
     if not pyproject_path.exists():
         raise RuntimeError(f"No pyproject.toml file found at \"{Path.cwd()}\"")
-    
+
     uv_lock_path = cwd / "uv.lock"
     if not uv_lock_path.exists():
         call_uv("lock")
-    
+
     pyproject_toml = tomllib.loads(pyproject_path.read_text())
     spec = get_project_specifier(pyproject=pyproject_toml)
-    
+
     pythons = get_viable_pythons(
         spec=spec,
         prereleases=test_args.prereleases,
@@ -394,7 +395,7 @@ def main() -> PyTestExit:
 
             for r in as_completed(futures):
                 result = r.result()
-                
+
                 result_codes.append(PyTestExit(result.returncode))
                 if result.stderr:
                     sys.stderr.buffer.write(result.stderr)
