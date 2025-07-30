@@ -184,7 +184,6 @@ def sync_test_envs(
 
     # backup the uv lockfile
     uv_lock = Path.cwd() / "uv.lock"
-    assert uv_lock.exists()
     if uv_lock.exists():
         uv_lock_data = uv_lock.read_text()
     else:
