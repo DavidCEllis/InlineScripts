@@ -182,57 +182,70 @@ def sync_test_envs(
     if test_lowest:
         resolution_modes.append("lowest-direct")
 
-    for py in pythons:
+    # backup the uv lockfile
+    uv_lock = Path.cwd() / "uv.lock"
+    assert uv_lock.exists()
+    if uv_lock.exists():
+        uv_lock_data = uv_lock.read_text()
+    else:
+        uv_lock_data = None
+
+    try:
         for mode in resolution_modes:
-            # sync environments with both resolution types
+            for py in pythons:
+                # sync environments with all resolution types
+                env_path = test_path / mode / py.implementation / ".".join(str(v) for v in py.version[:2])
 
-            env_path = test_path / mode / py.implementation / ".".join(str(v) for v in py.version[:2])
+                # Make the parent folders if they don't exist
+                env_path.parent.mkdir(exist_ok=True, parents=True)
 
-            # Make the parent folders if they don't exist
-            env_path.parent.mkdir(exist_ok=True, parents=True)
+                # Sync the environment
+                uv_cmd = [
+                    "sync",
+                    "--python", py.executable,
+                ]
+                for extra in extras:
+                    uv_cmd.extend(["--extra", extra])
 
-            # Sync the environment
-            uv_cmd = [
-                "sync",
-                "--python", py.executable,
-            ]
-            for extra in extras:
-                uv_cmd.extend(["--extra", extra])
-
-            call_uv(
-                *uv_cmd,
-                env={
-                    "UV_RESOLUTION": mode,
-                    "UV_PROJECT_ENVIRONMENT": str(env_path),
-                    "UV_FROZEN": "true",
-                    "VIRTUAL_ENV": str(env_path),
-                },
-                quiet_uv=quiet_uv,
-            )
-
-            # Check if pytest is in the environment
-            try:
-                pip_list = subprocess.run(
-                    [
-                        UV_PATH, "pip", "list",
-                        "--python", str(env_path),
-                        "--format", "json",
-                    ],
-                    check=True,
-                    capture_output=True,
-                    text=True,
+                call_uv(
+                    *uv_cmd,
+                    env={
+                        "UV_RESOLUTION": mode,
+                        "UV_PROJECT_ENVIRONMENT": str(env_path),
+                        "VIRTUAL_ENV": str(env_path),
+                    },
+                    quiet_uv=quiet_uv,
                 )
-            except subprocess.CalledProcessError as e:
-                raise RuntimeError(f"Failed to list dependencies with UV: {e.stderr}")
 
-            dependency_set = {p["name"] for p in json.loads(pip_list.stdout)}
-            if "pytest" not in dependency_set:
-                call_uv("pip", "install", "--python", str(env_path), "pytest", quiet_uv=quiet_uv)
+                # Check if pytest is in the environment
+                try:
+                    pip_list = subprocess.run(
+                        [
+                            UV_PATH, "pip", "list",
+                            "--python", str(env_path),
+                            "--format", "json",
+                        ],
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    )
+                except subprocess.CalledProcessError as e:
+                    raise RuntimeError(f"Failed to list dependencies with UV: {e.stderr}")
 
-            python_path = env_path / PYTHON_EXE
-            assert python_path.exists()
+                dependency_set = {p["name"] for p in json.loads(pip_list.stdout)}
+                if "pytest" not in dependency_set:
+                    call_uv("pip", "install", "--python", str(env_path), "pytest", quiet_uv=quiet_uv)
 
-            installs.append(PythonVEnv(python_path, dependency_set))
+                python_path = env_path / PYTHON_EXE
+                assert python_path.exists()
+
+                installs.append(PythonVEnv(python_path, dependency_set))
+    finally:
+        # Restore the original uv lockfile or remove it if there wasn't one
+        if uv_lock_data is None:
+            uv_lock.unlink()
+        else:
+            uv_lock.write_text(uv_lock_data)
 
     return installs
 
