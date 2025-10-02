@@ -136,7 +136,6 @@ class MidiModifier(Prefab):
                             if message.is_cc(self.expression_cc):
                                 last_expression = message.value
                                 for pressure in last_pressures.values():
-                                    # new_value = ceil(pressure.value * (1 - (last_expression/127 * expression_scaling)) + last_expression * expression_scaling)
                                     new_value = ceil(pressure.value * pressure_scaling + last_expression * expression_scaling)
                                     new_message = pressure.copy(value=new_value)
                                     midi_out.send(new_message)
@@ -147,7 +146,6 @@ class MidiModifier(Prefab):
                                 last_pressures[message.channel] = message
 
                                 # Aftertouch scaling calculation
-                                # new_value = ceil(message.value * (1 - (last_expression/127 * expression_scaling)) + last_expression * expression_scaling)
                                 new_value = ceil(message.value * pressure_scaling + last_expression * expression_scaling)
                                 new_message = message.copy(value=new_value)
                                 midi_out.send(new_message)
@@ -164,25 +162,25 @@ class MidiModifier(Prefab):
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("--list-devices", action="store_true")
+    parser.add_argument("--max-expression", action="store", default=MAX_EXPRESSION, type=int)
     return parser
 
 
 def main() -> int:
-    if len(sys.argv) > 1:
-        parser = get_parser()
-        args = parser.parse_args()
-        if args.list_devices:
-            print("Valid MIDI input device names:")
-            for item in mido.get_input_names():
-                print(f"\t{item!r}")
-            return 0
+    parser = get_parser()
+    args = parser.parse_args()
+    if args.list_devices:
+        print("Valid MIDI input device names:")
+        for item in mido.get_input_names():
+            print(f"\t{item!r}")
+        return 0
 
     modifier = MidiModifier(
         virtual_device=VIRTUAL_DEVICE_NAME,
         main_source=MPE_DEVICE_NAME,
         expression_source=EXPRESSION_DEVICE_NAME,
         expression_cc=EXPRESSION_CC,
-        max_expression=MAX_EXPRESSION,
+        max_expression=args.max_expression,
         filter_sysex=True,
     )
     modifier.start_virtual_aftertouch()
