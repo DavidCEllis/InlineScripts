@@ -6,13 +6,19 @@
 # ]
 # ///
 """
-This script is intended to create a virtual MIDI device that combines the 
+This script is intended to create a virtual MIDI device that combines the
 aftertouch of an MPE instrument such as the Seaboard that has no expression
 pedal input, with the expression input from another MIDI device.
 
-The expression pedal is used to set a minimum value for aftertouch input.
-Aftertouch from the MPE device is then rescaled to go from this new minimum
-to the maximum of 127.
+The expression pedal sets a minimum aftertouch value and pressure is rescaled
+to fit the range from maximum expression to 127.
+
+0                                                 127
+[----- Expression Max ----- | --- Pressure Max ---]
+[- Expr - | --- Pressure Max ---]
+
+This means the higher the maximum expression, the smaller the range for pressure
+which can make it easier to control in an expressive way.
 
 This will need modification to work on Windows as mido is unable to create a
 virtual port on that platform.
@@ -32,7 +38,7 @@ MPE_DEVICE_NAME = "Seaboard BLOCK M"
 EXPRESSION_DEVICE_NAME = "MIDI4x4 Midi In 3"  # Name of the device with the expression pedal
 
 EXPRESSION_CC = 11
-MAX_EXPRESSION = 64
+MAX_EXPRESSION = 64  # Maximum 'pressure' contributed from the expression pedal
 
 
 def check_inputs(midi_inputs: list[str]) -> bool:
@@ -50,14 +56,15 @@ class MidiModifier(Prefab):
 
     While active this takes the last known value of the expression source
     and uses it to "compress" the values of pressure from the main_source.
-    This is done by raising the floor value of the pressure messages and 
+    This is done by raising the floor value of the pressure messages and
     adjusting the in-between values accordingly.
 
     :param main_source: The name of your main MPE device
     :param expression_source: The name of the MIDI device to take Expression input from
     :param virtual_device: The name of the new virtual device to create
-    :param max_expression: The value that the expression pedal at maximum level sets as 
+    :param max_expression: The value that the expression pedal at maximum level sets as
                            the minimum aftertouch value
+    :param pressure_scaling: The value to use to rescale the pressure input
     :param filter_sysex: Remove sysex messages from the midi output of the virtual device
     """
     virtual_device: str
@@ -78,7 +85,7 @@ class MidiModifier(Prefab):
         for device in (main_source, expression_source):
             if device not in known_inputs:
                 raise RuntimeError(f"{device!r} input is not enabled")
-    
+
     def print_messages(self) -> None:
         """
         Simple print function to show the source aftertouch and expression values.
@@ -91,7 +98,7 @@ class MidiModifier(Prefab):
 
                     if self.filter_sysex and message.type == "sysex":
                         continue
-    
+
                     if device.name == self.main_source and message.type == "aftertouch":
                         print(device.name, message)
                     elif device.name == self.expression_source and message.is_cc(11):
@@ -105,7 +112,8 @@ class MidiModifier(Prefab):
         Start the virtual device, relaying main_source with only aftertouch values altered per channel
         """
         last_expression = 0
-        scaling = self.max_expression / 128  # 128 so 64 is exactly half
+        expression_scaling = self.max_expression / 128  # 128 so 64 is exactly half
+        pressure_scaling = 1 - expression_scaling
 
         # Need to keep track of the last pressure values for each channel before scaling
         # When the expression pedal is moved it will send new re-scaled aftertouch messages
@@ -128,17 +136,19 @@ class MidiModifier(Prefab):
                             if message.is_cc(self.expression_cc):
                                 last_expression = message.value
                                 for pressure in last_pressures.values():
-                                    new_value = ceil(pressure.value * (1 - (last_expression/127 * scaling)) + last_expression * scaling)
+                                    # new_value = ceil(pressure.value * (1 - (last_expression/127 * expression_scaling)) + last_expression * expression_scaling)
+                                    new_value = ceil(pressure.value * pressure_scaling + last_expression * expression_scaling)
                                     new_message = pressure.copy(value=new_value)
                                     midi_out.send(new_message)
-                                
+
                         else:  # Must be main_source, no need to check device name
                             if message.type == "aftertouch":
                                 # Store unscaled aftertouch values
                                 last_pressures[message.channel] = message
 
                                 # Aftertouch scaling calculation
-                                new_value = ceil(message.value * (1 - (last_expression/127 * scaling)) + last_expression * scaling)
+                                # new_value = ceil(message.value * (1 - (last_expression/127 * expression_scaling)) + last_expression * expression_scaling)
+                                new_value = ceil(message.value * pressure_scaling + last_expression * expression_scaling)
                                 new_message = message.copy(value=new_value)
                                 midi_out.send(new_message)
                             else:
@@ -147,7 +157,7 @@ class MidiModifier(Prefab):
 
                 except KeyboardInterrupt:
                     pass
-        
+
         print("Closing")
 
 
@@ -169,7 +179,7 @@ def main() -> int:
 
     modifier = MidiModifier(
         virtual_device=VIRTUAL_DEVICE_NAME,
-        main_source=MPE_DEVICE_NAME, 
+        main_source=MPE_DEVICE_NAME,
         expression_source=EXPRESSION_DEVICE_NAME,
         expression_cc=EXPRESSION_CC,
         max_expression=MAX_EXPRESSION,
